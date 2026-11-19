@@ -30,6 +30,10 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    androidResources {
+        noCompress += "task"
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -43,6 +47,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("com.google.mediapipe:tasks-vision:1.2.2")
 
     testImplementation("junit:junit:4.13.2")
 }
