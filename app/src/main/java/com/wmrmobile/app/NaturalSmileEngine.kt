@@ -48,7 +48,12 @@ internal object NaturalSmileEngine {
     }
 
     /** Creates a new bitmap using a localized mesh warp around both mouth corners. */
-    fun apply(source: Bitmap, mouth: MouthGeometry, intensity: Float): Bitmap {
+    fun apply(
+        source: Bitmap,
+        mouth: MouthGeometry,
+        intensity: Float,
+        colorFilter: android.graphics.ColorFilter? = null
+    ): Bitmap {
         val amount = intensity.coerceIn(0f, 1f)
         require(amount > 0f) { "Increase smile intensity before applying." }
         val output = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
@@ -61,7 +66,9 @@ internal object NaturalSmileEngine {
         )
         Canvas(output).drawBitmapMesh(
             source, columns, rows, vertices, 0, null, 0,
-            Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+            Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+                this.colorFilter = colorFilter
+            }
         )
         return output
     }
