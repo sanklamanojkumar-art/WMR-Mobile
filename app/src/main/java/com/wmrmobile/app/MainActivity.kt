@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -149,6 +150,7 @@ private fun WmrEditor(
     var brightness by remember { mutableStateOf(0f) }
     var contrast by remember { mutableStateOf(1f) }
     var saturation by remember { mutableStateOf(1f) }
+    var selectedFilter by remember { mutableStateOf("Natural") }
     var showOriginal by remember { mutableStateOf(false) }
 
     LaunchedEffect(imageUri) {
@@ -162,13 +164,14 @@ private fun WmrEditor(
         brightness = 0f
         contrast = 1f
         saturation = 1f
+        selectedFilter = "Natural"
         showOriginal = false
     }
 
     // Preview uses a GPU color filter; do not allocate a new full-size Bitmap
     // on every slider movement (that can exhaust memory and crash the app).
-    val previewColorMatrix = remember(brightness, contrast, saturation) {
-        buildPreviewColorMatrix(brightness, contrast, saturation)
+    val previewColorMatrix = remember(brightness, contrast, saturation, selectedFilter) {
+        buildPreviewColorMatrix(brightness, contrast, saturation, selectedFilter)
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF10131B)) {
@@ -237,10 +240,25 @@ private fun WmrEditor(
                             brightness = 0f
                             contrast = 1f
                             saturation = 1f
+                            selectedFilter = "Natural"
                             showOriginal = false
                         },
                         modifier = Modifier.weight(1f)
                     ) { Text("Reset") }
+                }
+
+                Text("FILTERS", color = Color.White, style = MaterialTheme.typography.titleSmall)
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("Natural", "Vivid", "Warm", "Cool", "Mono", "Soft").forEach { preset ->
+                        if (selectedFilter == preset) {
+                            Button(onClick = { selectedFilter = preset }) { Text(preset) }
+                        } else {
+                            OutlinedButton(onClick = { selectedFilter = preset }) { Text(preset) }
+                        }
+                    }
                 }
 
                 Text("Brightness  ${brightness.toInt()}", color = Color.White)
@@ -254,7 +272,7 @@ private fun WmrEditor(
                     onClick = {
                         originalBitmap?.let { source ->
                             runCatching {
-                                applyPhotoAdjustments(source, brightness, contrast, saturation)
+                                applyPhotoAdjustments(source, brightness, contrast, saturation, selectedFilter)
                             }.onSuccess(onExport)
                         }
                     },
@@ -279,17 +297,38 @@ private fun WmrEditor(
 private fun buildPreviewColorMatrix(
     brightness: Float,
     contrast: Float,
-    saturation: Float
+    saturation: Float,
+    preset: String
 ): ComposeColorMatrix {
-    val s = saturation
-    val c = contrast
-    return ComposeColorMatrix(
-        floatArrayOf(
-            c * (0.213f + 0.787f * s), c * (0.715f - 0.715f * s), c * (0.072f - 0.072f * s), 0f, brightness,
-            c * (0.213f - 0.213f * s), c * (0.715f + 0.285f * s), c * (0.072f - 0.072f * s), 0f, brightness,
-            c * (0.213f - 0.213f * s), c * (0.715f - 0.715f * s), c * (0.072f + 0.928f * s), 0f, brightness,
-            0f, 0f, 0f, 1f, 0f
-        )
+    return ComposeColorMatrix(buildPhotoMatrix(brightness, contrast, saturation, preset))
+}
+
+private fun buildPhotoMatrix(
+    brightness: Float,
+    contrast: Float,
+    saturation: Float,
+    preset: String
+): FloatArray {
+    val presetSaturation = when (preset) {
+        "Vivid" -> 1.35f
+        "Mono" -> 0f
+        "Soft" -> 0.82f
+        else -> 1f
+    }
+    val s = saturation * presetSaturation
+    val c = contrast * if (preset == "Vivid") 1.08f else if (preset == "Soft") 0.96f else 1f
+    val warm = when (preset) {
+        "Warm" -> 8f
+        "Cool" -> -8f
+        else -> 0f
+    }
+    val redTint = warm
+    val blueTint = -warm
+    return floatArrayOf(
+        c * (0.213f + 0.787f * s), c * (0.715f - 0.715f * s), c * (0.072f - 0.072f * s), 0f, brightness + redTint,
+        c * (0.213f - 0.213f * s), c * (0.715f + 0.285f * s), c * (0.072f - 0.072f * s), 0f, brightness,
+        c * (0.213f - 0.213f * s), c * (0.715f - 0.715f * s), c * (0.072f + 0.928f * s), 0f, brightness + blueTint,
+        0f, 0f, 0f, 1f, 0f
     )
 }
 
@@ -297,19 +336,10 @@ private fun applyPhotoAdjustments(
     source: Bitmap,
     brightness: Float,
     contrast: Float,
-    saturation: Float
+    saturation: Float,
+    preset: String
 ): Bitmap {
-    val matrix = ColorMatrix().apply { setSaturation(saturation) }
-    matrix.postConcat(
-        ColorMatrix(
-            floatArrayOf(
-                contrast, 0f, 0f, 0f, brightness,
-                0f, contrast, 0f, 0f, brightness,
-                0f, 0f, contrast, 0f, brightness,
-                0f, 0f, 0f, 1f, 0f
-            )
-        )
-    )
+    val matrix = ColorMatrix(buildPhotoMatrix(brightness, contrast, saturation, preset))
 
     val output = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
     val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
