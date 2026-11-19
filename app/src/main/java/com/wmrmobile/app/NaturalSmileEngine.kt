@@ -54,31 +54,11 @@ internal object NaturalSmileEngine {
         val output = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
         val columns = 48
         val rows = 48
-        val vertices = FloatArray((columns + 1) * (rows + 1) * 2)
-        val mouthWidth = sqrt(
-            (mouth.rightX - mouth.leftX) * (mouth.rightX - mouth.leftX) +
-                (mouth.rightY - mouth.leftY) * (mouth.rightY - mouth.leftY)
-        ).coerceAtLeast(1f)
-        val radius = mouthWidth * 0.34f
-        val lift = mouthWidth * 0.075f * amount
-        var index = 0
-        for (row in 0..rows) {
-            val y = source.height * row.toFloat() / rows
-            for (column in 0..columns) {
-                val x = source.width * column.toFloat() / columns
-                fun weight(cx: Float, cy: Float): Float {
-                    val dx = x - cx
-                    val dy = y - cy
-                    val d2 = dx * dx + dy * dy
-                    return if (d2 >= radius * radius) 0f
-                    else exp((-d2 / (2f * radius * radius * 0.22f)).toDouble()).toFloat()
-                }
-                val wl = weight(mouth.leftX, mouth.leftY)
-                val wr = weight(mouth.rightX, mouth.rightY)
-                vertices[index++] = (x + (wr - wl) * lift * 0.22f).coerceIn(0f, source.width.toFloat())
-                vertices[index++] = (y - (wl + wr) * lift).coerceIn(0f, source.height.toFloat())
-            }
-        }
+        val vertices = SmileWarpMath.buildVertices(
+            source.width, source.height,
+            mouth.leftX, mouth.leftY, mouth.rightX, mouth.rightY,
+            amount, columns, rows
+        )
         Canvas(output).drawBitmapMesh(
             source, columns, rows, vertices, 0, null, 0,
             Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
