@@ -2,6 +2,7 @@ package com.wmrmobile.app
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.graphics.Canvas
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
@@ -101,20 +102,36 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun decodeSelectedImage(uri: Uri): Bitmap? {
+    private fun decodeSelectedImage(uri: Uri): Bitmap {
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            val source = ImageDecoder.createSource(contentResolver, uri)
+            return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                decoder.isMutableRequired = false
+                val width = info.size.width
+                val height = info.size.height
+                val longest = maxOf(width, height)
+                if (longest > 2048) {
+                    val scale = 2048f / longest
+                    decoder.setTargetSize(
+                        (width * scale).toInt().coerceAtLeast(1),
+                        (height * scale).toInt().coerceAtLeast(1)
+                    )
+                }
+            }
+        }
+
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         contentResolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it, null, bounds)
-        } ?: return null
+        } ?: error("Could not open the selected photo")
+        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Unsupported or invalid image" }
 
         var sample = 1
-        val longestSide = maxOf(bounds.outWidth, bounds.outHeight)
-        while (longestSide / sample > 2048) sample *= 2
-
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 2048) sample *= 2
         val options = BitmapFactory.Options().apply { inSampleSize = sample }
         return contentResolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it, null, options)
-        }
+        } ?: error("Could not decode the selected photo")
     }
 }
 
@@ -127,14 +144,19 @@ private fun WmrEditor(
     onExport: (Bitmap) -> Unit
 ) {
     var originalBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var loadError by remember { mutableStateOf<String?>(null) }
     var brightness by remember { mutableStateOf(0f) }
     var contrast by remember { mutableStateOf(1f) }
     var saturation by remember { mutableStateOf(1f) }
     var showOriginal by remember { mutableStateOf(false) }
 
     LaunchedEffect(imageUri) {
+        loadError = null
         originalBitmap = if (imageUri == null) null else {
-            withContext(Dispatchers.IO) { decodeImage(imageUri) }
+            runCatching {
+                withContext(Dispatchers.IO) { decodeImage(imageUri) }
+            }.onFailure { loadError = it.localizedMessage ?: "Unable to read this image" }
+                .getOrNull()
         }
         brightness = 0f
         contrast = 1f
@@ -182,11 +204,19 @@ private fun WmrEditor(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            if (imageUri == null) "No photo selected" else "Loading photo…",
+                            when {
+                                imageUri == null -> "No photo selected"
+                                loadError != null -> "Couldn't load this photo"
+                                originalBitmap == null -> "Loading photo…"
+                                else -> "Preparing preview…"
+                            },
                             color = Color.White
                         )
                         Spacer(Modifier.height(8.dp))
-                        Text("Choose an image to start editing.", color = Color(0xFFB8C0D4))
+                        Text(
+                            loadError ?: "Choose another image if loading does not finish.",
+                            color = Color(0xFFB8C0D4)
+                        )
                     }
                 }
             }
@@ -231,8 +261,10 @@ private fun WmrEditor(
                     color = Color(0xFF9DA8BE),
                     style = MaterialTheme.typography.bodySmall
                 )
-            } else {
+            } else if (imageUri == null) {
                 Text("Select a photo to unlock editing controls.", color = Color(0xFF9DA8BE))
+            } else if (loadError != null) {
+                Text("Try choosing a JPG or PNG image.", color = Color(0xFFFFB4AB))
             }
         }
     }
