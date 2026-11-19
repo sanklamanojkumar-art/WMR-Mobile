@@ -35,12 +35,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix as ComposeColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -110,8 +111,8 @@ class MainActivity : ComponentActivity() {
                 val width = info.size.width
                 val height = info.size.height
                 val longest = maxOf(width, height)
-                if (longest > 2048) {
-                    val scale = 2048f / longest
+                if (longest > 1600) {
+                    val scale = 1600f / longest
                     decoder.setTargetSize(
                         (width * scale).toInt().coerceAtLeast(1),
                         (height * scale).toInt().coerceAtLeast(1)
@@ -127,7 +128,7 @@ class MainActivity : ComponentActivity() {
         require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Unsupported or invalid image" }
 
         var sample = 1
-        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 2048) sample *= 2
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 1600) sample *= 2
         val options = BitmapFactory.Options().apply { inSampleSize = sample }
         return contentResolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it, null, options)
@@ -164,12 +165,10 @@ private fun WmrEditor(
         showOriginal = false
     }
 
-    val editedBitmap by produceState<Bitmap?>(null, originalBitmap, brightness, contrast, saturation) {
-        value = originalBitmap?.let { source ->
-            withContext(Dispatchers.Default) {
-                applyPhotoAdjustments(source, brightness, contrast, saturation)
-            }
-        }
+    // Preview uses a GPU color filter; do not allocate a new full-size Bitmap
+    // on every slider movement (that can exhaust memory and crash the app).
+    val previewColorMatrix = remember(brightness, contrast, saturation) {
+        buildPreviewColorMatrix(brightness, contrast, saturation)
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF10131B)) {
@@ -189,13 +188,14 @@ private fun WmrEditor(
                 shape = RoundedCornerShape(22.dp),
                 color = Color(0xFF1C2230)
             ) {
-                val preview = if (showOriginal) originalBitmap else editedBitmap
+                val preview = originalBitmap
                 if (preview != null) {
                     Image(
                         bitmap = preview.asImageBitmap(),
                         contentDescription = if (showOriginal) "Original photo" else "Edited photo preview",
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit
+                        contentScale = ContentScale.Fit,
+                        colorFilter = if (showOriginal) null else ColorFilter.colorMatrix(previewColorMatrix)
                     )
                 } else {
                     Column(
@@ -251,8 +251,14 @@ private fun WmrEditor(
                 Slider(value = saturation, onValueChange = { saturation = it }, valueRange = 0f..2f)
 
                 Button(
-                    onClick = { editedBitmap?.let(onExport) },
-                    enabled = editedBitmap != null && !showOriginal,
+                    onClick = {
+                        originalBitmap?.let { source ->
+                            runCatching {
+                                applyPhotoAdjustments(source, brightness, contrast, saturation)
+                            }.onSuccess(onExport)
+                        }
+                    },
+                    enabled = originalBitmap != null && !showOriginal,
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("Save edited photo") }
 
@@ -268,6 +274,23 @@ private fun WmrEditor(
             }
         }
     }
+}
+
+private fun buildPreviewColorMatrix(
+    brightness: Float,
+    contrast: Float,
+    saturation: Float
+): ComposeColorMatrix {
+    val s = saturation
+    val c = contrast
+    return ComposeColorMatrix(
+        floatArrayOf(
+            c * (0.213f + 0.787f * s), c * (0.715f - 0.715f * s), c * (0.072f - 0.072f * s), 0f, brightness,
+            c * (0.213f - 0.213f * s), c * (0.715f + 0.285f * s), c * (0.072f - 0.072f * s), 0f, brightness,
+            c * (0.213f - 0.213f * s), c * (0.715f - 0.715f * s), c * (0.072f + 0.928f * s), 0f, brightness,
+            0f, 0f, 0f, 1f, 0f
+        )
+    )
 }
 
 private fun applyPhotoAdjustments(
