@@ -107,7 +107,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun decodeSelectedImage(uri: Uri): Bitmap {
+    private fun decodeSelectedImage(uri: Uri, maxDimension: Int?): Bitmap {
         if (android.os.Build.VERSION.SDK_INT >= 28) {
             val source = ImageDecoder.createSource(contentResolver, uri)
             return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
@@ -115,8 +115,8 @@ class MainActivity : ComponentActivity() {
                 val width = info.size.width
                 val height = info.size.height
                 val longest = maxOf(width, height)
-                if (longest > 1600) {
-                    val scale = 1600f / longest
+                if (maxDimension != null && longest > maxDimension) {
+                    val scale = maxDimension.toFloat() / longest
                     decoder.setTargetSize(
                         (width * scale).toInt().coerceAtLeast(1),
                         (height * scale).toInt().coerceAtLeast(1)
@@ -132,7 +132,7 @@ class MainActivity : ComponentActivity() {
         require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Unsupported or invalid image" }
 
         var sample = 1
-        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 1600) sample *= 2
+        while (maxDimension != null && maxOf(bounds.outWidth, bounds.outHeight) / sample > maxDimension) sample *= 2
         val options = BitmapFactory.Options().apply { inSampleSize = sample }
         return contentResolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it, null, options)
@@ -143,7 +143,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun WmrEditor(
     imageUri: Uri?,
-    decodeImage: (Uri) -> Bitmap?,
+    decodeImage: (Uri, Int?) -> Bitmap?,
     onChoosePhoto: () -> Unit,
     onClear: () -> Unit,
     onExport: (Bitmap) -> Unit
@@ -159,6 +159,9 @@ private fun WmrEditor(
     var smileIntensity by remember { mutableStateOf(0f) }
     var smileError by remember { mutableStateOf<String?>(null) }
     var smileBusy by remember { mutableStateOf(false) }
+    var appliedSmileIntensity by remember { mutableStateOf(0f) }
+    var exporting by remember { mutableStateOf(false) }
+    var exportError by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -166,7 +169,7 @@ private fun WmrEditor(
         loadError = null
         originalBitmap = if (imageUri == null) null else {
             runCatching {
-                withContext(Dispatchers.IO) { decodeImage(imageUri) }
+                withContext(Dispatchers.IO) { decodeImage(imageUri, 1600) }
             }.onFailure { loadError = it.localizedMessage ?: "Unable to read this image" }
                 .getOrNull()
         }
@@ -177,7 +180,9 @@ private fun WmrEditor(
         showOriginal = false
         smileBitmap = null
         smileIntensity = 0f
+        appliedSmileIntensity = 0f
         smileError = null
+        exportError = null
     }
 
     // Preview uses a GPU color filter; do not allocate a new full-size Bitmap
@@ -254,6 +259,7 @@ private fun WmrEditor(
                             saturation = 1f
                             selectedFilter = "Natural"
                             smileBitmap = null
+                            appliedSmileIntensity = 0f
                             smileIntensity = 0f
                             smileError = null
                             showOriginal = false
@@ -279,7 +285,7 @@ private fun WmrEditor(
                                     NaturalSmileEngine.apply(source, geometry, requestedIntensity)
                                 }
                             }
-                            result.onSuccess { smileBitmap = it }
+                            result.onSuccess { smileBitmap = it; appliedSmileIntensity = requestedIntensity }
                                 .onFailure { smileError = it.localizedMessage ?: "Smile editing failed safely." }
                             smileBusy = false
                         }
@@ -289,7 +295,7 @@ private fun WmrEditor(
                 ) { Text(if (smileBusy) "Analyzing face…" else "Apply Natural Smile") }
                 if (smileBitmap != null) {
                     OutlinedButton(
-                        onClick = { smileBitmap = null },
+                        onClick = { smileBitmap = null; appliedSmileIntensity = 0f },
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("Undo smile") }
                 }
@@ -318,18 +324,42 @@ private fun WmrEditor(
 
                 Button(
                     onClick = {
-                        originalBitmap?.let { source ->
-                            runCatching {
-                                applyPhotoAdjustments(smileBitmap ?: source, brightness, contrast, saturation, selectedFilter)
-                            }.onSuccess(onExport)
+                        val uri = imageUri ?: return@Button
+                        exporting = true
+                        exportError = null
+                        val exportBrightness = brightness
+                        val exportContrast = contrast
+                        val exportSaturation = saturation
+                        val exportFilter = selectedFilter
+                        val exportSmile = appliedSmileIntensity
+                        scope.launch {
+                            val result = runCatching {
+                                withContext(Dispatchers.IO) {
+                                    // The 1600px bitmap is preview-only; export re-reads the original.
+                                    val fullResolution = decodeImage(uri, null)
+                                        ?: error("Could not decode the original-resolution photo")
+                                    val portraitAdjusted = if (exportSmile > 0f) {
+                                        val geometry = NaturalSmileEngine.detect(context, fullResolution)
+                                        NaturalSmileEngine.apply(fullResolution, geometry, exportSmile)
+                                    } else fullResolution
+                                    applyPhotoAdjustments(
+                                        portraitAdjusted, exportBrightness, exportContrast,
+                                        exportSaturation, exportFilter
+                                    )
+                                }
+                            }
+                            result.onSuccess(onExport)
+                                .onFailure { exportError = it.localizedMessage ?: "Could not export full-resolution photo." }
+                            exporting = false
                         }
                     },
-                    enabled = originalBitmap != null && !showOriginal,
+                    enabled = originalBitmap != null && !showOriginal && !exporting,
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Save edited photo") }
+                ) { Text(if (exporting) "Preparing full-resolution photo…" else "Save full-resolution photo") }
 
+                exportError?.let { Text(it, color = Color(0xFFFFB4AB)) }
                 Text(
-                    "Edits export to a new file. Your original photo is never overwritten.",
+                    "Export re-reads the original photo at its native dimensions. Your original file is never overwritten.",
                     color = Color(0xFF9DA8BE),
                     style = MaterialTheme.typography.bodySmall
                 )
