@@ -63,16 +63,20 @@ class MainActivity : ComponentActivity() {
     private val exportPicker = registerForActivityResult(
         ActivityResultContracts.CreateDocument("image/jpeg")
     ) { uri ->
-        if (uri != null) {
-            val bitmap = pendingExport
+        val bitmap = pendingExport
+        if (uri != null && bitmap != null) {
             Thread {
                 val saved = runCatching {
                     contentResolver.openOutputStream(uri)?.use { output ->
-                        checkNotNull(bitmap) { "No edited image to save" }
-                            .compress(Bitmap.CompressFormat.JPEG, 95, output)
+                        check(bitmap.compress(Bitmap.CompressFormat.JPEG, 95, output)) {
+                            "JPEG compression failed"
+                        }
                     } ?: error("Unable to open destination")
+                    true
                 }.getOrDefault(false)
+                bitmap.recycle()
                 runOnUiThread {
+                    pendingExport = null
                     Toast.makeText(
                         this,
                         if (saved) "Edited photo saved" else "Could not save photo",
@@ -80,6 +84,9 @@ class MainActivity : ComponentActivity() {
                     ).show()
                 }
             }.start()
+        } else {
+            bitmap?.recycle()
+            pendingExport = null
         }
     }
 
@@ -338,14 +345,26 @@ private fun WmrEditor(
                                     // The 1600px bitmap is preview-only; export re-reads the original.
                                     val fullResolution = decodeImage(uri, null)
                                         ?: error("Could not decode the original-resolution photo")
-                                    val portraitAdjusted = if (exportSmile > 0f) {
-                                        val geometry = NaturalSmileEngine.detect(context, fullResolution)
-                                        NaturalSmileEngine.apply(fullResolution, geometry, exportSmile)
-                                    } else fullResolution
-                                    applyPhotoAdjustments(
-                                        portraitAdjusted, exportBrightness, exportContrast,
-                                        exportSaturation, exportFilter
-                                    )
+                                    try {
+                                        val exportColorFilter = buildAndroidColorFilter(
+                                            exportBrightness, exportContrast,
+                                            exportSaturation, exportFilter
+                                        )
+                                        if (exportSmile > 0f) {
+                                            val geometry = NaturalSmileEngine.detect(context, fullResolution)
+                                            // Warp and colour adjustments render in one pass.
+                                            NaturalSmileEngine.apply(
+                                                fullResolution, geometry, exportSmile, exportColorFilter
+                                            )
+                                        } else {
+                                            applyPhotoAdjustments(
+                                                fullResolution, exportBrightness, exportContrast,
+                                                exportSaturation, exportFilter, exportColorFilter
+                                            )
+                                        }
+                                    } finally {
+                                        if (!fullResolution.isRecycled) fullResolution.recycle()
+                                    }
                                 }
                             }
                             result.onSuccess(onExport)
@@ -386,14 +405,22 @@ private fun applyPhotoAdjustments(
     brightness: Float,
     contrast: Float,
     saturation: Float,
-    preset: String
+    preset: String,
+    colorFilter: ColorMatrixColorFilter = buildAndroidColorFilter(brightness, contrast, saturation, preset)
 ): Bitmap {
-    val matrix = ColorMatrix(buildPhotoMatrix(brightness, contrast, saturation, preset))
-
     val output = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
     val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
-        colorFilter = ColorMatrixColorFilter(matrix)
+        this.colorFilter = colorFilter
     }
     Canvas(output).drawBitmap(source, 0f, 0f, paint)
     return output
 }
+
+ 
+private fun buildAndroidColorFilter(
+    brightness: Float,
+    contrast: Float,
+    saturation: Float,
+    preset: String
+): ColorMatrixColorFilter =
+    ColorMatrixColorFilter(ColorMatrix(buildPhotoMatrix(brightness, contrast, saturation, preset)))
