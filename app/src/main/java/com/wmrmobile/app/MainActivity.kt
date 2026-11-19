@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.ColorMatrix as ComposeColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -152,6 +153,11 @@ private fun WmrEditor(
     var saturation by remember { mutableStateOf(1f) }
     var selectedFilter by remember { mutableStateOf("Natural") }
     var showOriginal by remember { mutableStateOf(false) }
+    var smileBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var smileIntensity by remember { mutableStateOf(0f) }
+    var smileError by remember { mutableStateOf<String?>(null) }
+    var smileBusy by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     LaunchedEffect(imageUri) {
         loadError = null
@@ -166,6 +172,9 @@ private fun WmrEditor(
         saturation = 1f
         selectedFilter = "Natural"
         showOriginal = false
+        smileBitmap = null
+        smileIntensity = 0f
+        smileError = null
     }
 
     // Preview uses a GPU color filter; do not allocate a new full-size Bitmap
@@ -191,7 +200,7 @@ private fun WmrEditor(
                 shape = RoundedCornerShape(22.dp),
                 color = Color(0xFF1C2230)
             ) {
-                val preview = originalBitmap
+                val preview = smileBitmap ?: originalBitmap
                 if (preview != null) {
                     Image(
                         bitmap = preview.asImageBitmap(),
@@ -241,11 +250,46 @@ private fun WmrEditor(
                             contrast = 1f
                             saturation = 1f
                             selectedFilter = "Natural"
+                            smileBitmap = null
+                            smileIntensity = 0f
+                            smileError = null
                             showOriginal = false
                         },
                         modifier = Modifier.weight(1f)
                     ) { Text("Reset") }
                 }
+
+                Text("NATURAL SMILE", color = Color.White, style = MaterialTheme.typography.titleSmall)
+                Text("On-device face landmarks • localized mouth adjustment", color = Color(0xFFB8C0D4))
+                Text("Smile intensity  ${(smileIntensity * 100).toInt()}%", color = Color.White)
+                Slider(value = smileIntensity, onValueChange = { smileIntensity = it }, valueRange = 0f..1f)
+                Button(
+                    onClick = {
+                        val source = originalBitmap ?: return@Button
+                        smileBusy = true
+                        smileError = null
+                        kotlinx.coroutines.CoroutineScope(Dispatchers.Main).launch {
+                            val result = runCatching {
+                                withContext(Dispatchers.Default) {
+                                    val geometry = NaturalSmileEngine.detect(context, source)
+                                    NaturalSmileEngine.apply(source, geometry, smileIntensity)
+                                }
+                            }
+                            result.onSuccess { smileBitmap = it }
+                                .onFailure { smileError = it.localizedMessage ?: "Smile editing failed safely." }
+                            smileBusy = false
+                        }
+                    },
+                    enabled = !smileBusy && smileIntensity > 0f,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (smileBusy) "Analyzing face…" else "Apply Natural Smile") }
+                if (smileBitmap != null) {
+                    OutlinedButton(
+                        onClick = { smileBitmap = null },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Undo smile") }
+                }
+                smileError?.let { Text(it, color = Color(0xFFFFB4AB)) }
 
                 Text("FILTERS", color = Color.White, style = MaterialTheme.typography.titleSmall)
                 Row(
@@ -272,7 +316,7 @@ private fun WmrEditor(
                     onClick = {
                         originalBitmap?.let { source ->
                             runCatching {
-                                applyPhotoAdjustments(source, brightness, contrast, saturation, selectedFilter)
+                                applyPhotoAdjustments(smileBitmap ?: source, brightness, contrast, saturation, selectedFilter)
                             }.onSuccess(onExport)
                         }
                     },
