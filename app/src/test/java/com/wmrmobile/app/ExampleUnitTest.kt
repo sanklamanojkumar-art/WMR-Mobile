@@ -19,13 +19,16 @@ class PhotoAdjustmentsTest {
     }
 
     @Test
-    fun monoPresetRemovesColorSaturation() {
+    fun monoPresetUsesSameLumaWeightsForEveryOutputChannel() {
         val matrix = buildPhotoMatrix(0f, 1f, 1f, "Mono")
-        assertEquals(0f, matrix[0], 0.0001f)
-        assertEquals(0f, matrix[2], 0.0001f)
-        assertEquals(0f, matrix[5], 0.0001f)
-        assertEquals(0f, matrix[10], 0.0001f)
-        assertEquals(0f, matrix[12], 0.0001f)
+        assertEquals(matrix[0], matrix[5], 0.0001f)
+        assertEquals(matrix[0], matrix[10], 0.0001f)
+        assertEquals(matrix[1], matrix[6], 0.0001f)
+        assertEquals(matrix[1], matrix[11], 0.0001f)
+        assertEquals(matrix[2], matrix[7], 0.0001f)
+        assertEquals(matrix[2], matrix[12], 0.0001f)
+        assertEquals(0f, matrix[3], 0.0001f)
+        assertEquals(0f, matrix[8], 0.0001f)
     }
 
     @Test
