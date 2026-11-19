@@ -51,3 +51,6 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
 }
+
+extra["ASSET_DIR"] = "$projectDir/src/main/assets"
+apply(from = "download_tasks.gradle.kts")
