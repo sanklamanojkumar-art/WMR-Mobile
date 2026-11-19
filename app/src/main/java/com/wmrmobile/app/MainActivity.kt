@@ -303,35 +303,6 @@ private fun buildPreviewColorMatrix(
     return ComposeColorMatrix(buildPhotoMatrix(brightness, contrast, saturation, preset))
 }
 
-private fun buildPhotoMatrix(
-    brightness: Float,
-    contrast: Float,
-    saturation: Float,
-    preset: String
-): FloatArray {
-    val presetSaturation = when (preset) {
-        "Vivid" -> 1.35f
-        "Mono" -> 0f
-        "Soft" -> 0.82f
-        else -> 1f
-    }
-    val s = saturation * presetSaturation
-    val c = contrast * if (preset == "Vivid") 1.08f else if (preset == "Soft") 0.96f else 1f
-    val warm = when (preset) {
-        "Warm" -> 8f
-        "Cool" -> -8f
-        else -> 0f
-    }
-    val redTint = warm
-    val blueTint = -warm
-    return floatArrayOf(
-        c * (0.213f + 0.787f * s), c * (0.715f - 0.715f * s), c * (0.072f - 0.072f * s), 0f, brightness + redTint,
-        c * (0.213f - 0.213f * s), c * (0.715f + 0.285f * s), c * (0.072f - 0.072f * s), 0f, brightness,
-        c * (0.213f - 0.213f * s), c * (0.715f - 0.715f * s), c * (0.072f + 0.928f * s), 0f, brightness + blueTint,
-        0f, 0f, 0f, 1f, 0f
-    )
-}
-
 private fun applyPhotoAdjustments(
     source: Bitmap,
     brightness: Float,
