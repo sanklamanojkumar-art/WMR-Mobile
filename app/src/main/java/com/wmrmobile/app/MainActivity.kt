@@ -37,6 +37,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,6 +49,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
@@ -158,6 +160,7 @@ private fun WmrEditor(
     var smileError by remember { mutableStateOf<String?>(null) }
     var smileBusy by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(imageUri) {
         loadError = null
@@ -200,7 +203,7 @@ private fun WmrEditor(
                 shape = RoundedCornerShape(22.dp),
                 color = Color(0xFF1C2230)
             ) {
-                val preview = smileBitmap ?: originalBitmap
+                val preview = if (showOriginal) originalBitmap else (smileBitmap ?: originalBitmap)
                 if (preview != null) {
                     Image(
                         bitmap = preview.asImageBitmap(),
@@ -268,11 +271,12 @@ private fun WmrEditor(
                         val source = originalBitmap ?: return@Button
                         smileBusy = true
                         smileError = null
-                        kotlinx.coroutines.CoroutineScope(Dispatchers.Main).launch {
+                        val requestedIntensity = smileIntensity
+                        scope.launch {
                             val result = runCatching {
                                 withContext(Dispatchers.Default) {
                                     val geometry = NaturalSmileEngine.detect(context, source)
-                                    NaturalSmileEngine.apply(source, geometry, smileIntensity)
+                                    NaturalSmileEngine.apply(source, geometry, requestedIntensity)
                                 }
                             }
                             result.onSuccess { smileBitmap = it }
