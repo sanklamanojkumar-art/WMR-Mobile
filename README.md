@@ -21,8 +21,9 @@ The goal is a polished, multi-tool photo studio—not a one-screen filter demo.
 
 3. **Portrait tools with identity protection**
    - Optional, subtle skin texture/lighting adjustments
-   - No face reshaping, eye/nose/lip resizing, face replacement, or identity reconstruction
-   - Every portrait adjustment must be opt-in, adjustable, and reversible
+   - **Natural Smile (planned):** an opt-in control to add or soften a gentle, realistic smile when requested, with adjustable intensity and an original/edited preview
+   - Smile editing must preserve the person's recognizable identity and facial proportions; no face replacement or identity reconstruction
+   - Every portrait adjustment must be opt-in, adjustable, reversible, and checked for visual artifacts before export
 
 4. **Creative studio**
    - Frames, borders, text, stickers, and overlays
@@ -40,7 +41,8 @@ The goal is a polished, multi-tool photo studio—not a one-screen filter demo.
 - The app does not upload selected photos to a server.
 - Original files are never overwritten; edits are exported as new files.
 - No AI-content/provenance removal or metadata stripping is provided.
-- Face geometry and identity are protected by design. Identity-changing operations are out of scope.
+- Face geometry and identity are protected by design. Identity replacement and face reshaping are out of scope.
+- Natural Smile will be an explicitly requested expression edit, not a default retouch. It may subtly alter expression, but must not change who the person looks like; the original remains untouched and the edited export should be clearly understood as edited.
 
 ## Current implementation
 
