@@ -42,6 +42,25 @@ class PhotoAdjustmentsTest {
     }
 
     @Test
+    fun zeroSaturationProducesGrayMatrixForAllChannels() {
+        val matrix = buildPhotoMatrix(0f, 1f, 0f, "Natural")
+        assertEquals(matrix[0], matrix[5], 0.0001f)
+        assertEquals(matrix[0], matrix[10], 0.0001f)
+        assertEquals(matrix[1], matrix[6], 0.0001f)
+        assertEquals(matrix[1], matrix[11], 0.0001f)
+        assertEquals(matrix[2], matrix[7], 0.0001f)
+        assertEquals(matrix[2], matrix[12], 0.0001f)
+    }
+
+    @Test
+    fun brightnessOffsetIsAppliedConsistentlyToRgbChannels() {
+        val matrix = buildPhotoMatrix(25f, 1f, 1f, "Natural")
+        assertEquals(25f, matrix[4], 0.0001f)
+        assertEquals(25f, matrix[9], 0.0001f)
+        assertEquals(25f, matrix[14], 0.0001f)
+    }
+
+    @Test
     fun allPresetsProduceFiniteMatrixValues() {
         listOf("Natural", "Vivid", "Warm", "Cool", "Mono", "Soft").forEach { preset ->
             val matrix = buildPhotoMatrix(12f, 1.2f, 0.8f, preset)
@@ -67,6 +86,24 @@ class SmileWarpMathTest {
                 assertEquals(y, vertices[index++], 0.0001f)
             }
         }
+    }
+
+    @Test
+    fun intensityIsClampedToSupportedRange() {
+        val atZero = SmileWarpMath.buildVertices(500, 500, 200f, 250f, 300f, 250f, 0f)
+        val belowZero = SmileWarpMath.buildVertices(500, 500, 200f, 250f, 300f, 250f, -5f)
+        assertTrue(atZero.contentEquals(belowZero))
+        val atOne = SmileWarpMath.buildVertices(500, 500, 200f, 250f, 300f, 250f, 1f)
+        val aboveOne = SmileWarpMath.buildVertices(500, 500, 200f, 250f, 300f, 250f, 5f)
+        assertTrue(atOne.contentEquals(aboveOne))
+    }
+
+    @Test
+    fun smileMeshReturnsExpectedVertexCountForCustomGrid() {
+        val columns = 8
+        val rows = 6
+        val vertices = SmileWarpMath.buildVertices(640, 480, 250f, 240f, 390f, 240f, 0.5f, columns, rows)
+        assertEquals((columns + 1) * (rows + 1) * 2, vertices.size)
     }
 
     @Test
