@@ -227,7 +227,7 @@ private fun WmrHome(onChoosePhoto: () -> Unit, onOpenEditor: () -> Unit) {
 }
 
 @Composable
-private fun WmrEditor 
+private fun WmrEditor(
     imageUri: Uri?,
     onBack: () -> Unit,
     decodeImage: (Uri, Int?) -> Bitmap?,
