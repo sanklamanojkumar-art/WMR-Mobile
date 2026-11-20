@@ -22,9 +22,12 @@ internal object NaturalSmileEngine {
             .setNumFaces(2)
             .setOutputFaceBlendshapes(true)
             .build()
+        // MediaPipe requires software ARGB_8888; picker images may be hardware-backed or other configs.
+        val analysisBitmap = if (bitmap.config == Bitmap.Config.ARGB_8888 && !bitmap.isHardware) bitmap else
+            bitmap.copy(Bitmap.Config.ARGB_8888, false) ?: error("Could not convert photo to ARGB_8888 for face analysis.")
         val landmarker = FaceLandmarker.createFromOptions(context, options)
         try {
-            val faces = landmarker.detect(BitmapImageBuilder(bitmap).build()).faceLandmarks()
+            val faces = landmarker.detect(BitmapImageBuilder(analysisBitmap).build()).faceLandmarks()
             require(faces.size == 1) {
                 if (faces.isEmpty()) "No face detected. Use a clear, front-facing portrait."
                 else "Multiple faces detected. Crop to one person before applying Natural Smile."
@@ -44,6 +47,7 @@ internal object NaturalSmileEngine {
             return MouthGeometry(x1, y1, x2, y2)
         } finally {
             landmarker.close()
+            if (analysisBitmap !== bitmap && !analysisBitmap.isRecycled) analysisBitmap.recycle()
         }
     }
 
