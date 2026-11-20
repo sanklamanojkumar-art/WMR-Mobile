@@ -14,6 +14,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -54,6 +55,7 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private var selectedImage by mutableStateOf<Uri?>(null)
+    private var editorOpen by mutableStateOf(false)
     private var pendingExport: Bitmap? = null
 
     private val imagePicker = registerForActivityResult(
@@ -94,10 +96,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
-                WmrEditor(
+                if (editorOpen) WmrEditor(
                     imageUri = selectedImage,
+                    onBack = { editorOpen = false },
                     decodeImage = ::decodeSelectedImage,
                     onChoosePhoto = {
+                        editorOpen = true
                         imagePicker.launch(
                             androidx.activity.result.PickVisualMediaRequest(
                                 ActivityResultContracts.PickVisualMedia.ImageOnly
@@ -109,10 +113,14 @@ class MainActivity : ComponentActivity() {
                         pendingExport = bitmap
                         exportPicker.launch("WMR-Edited.jpg")
                     }
-                )
+                ) else WmrHome(onChoosePhoto = {
+                    editorOpen = true
+                    imagePicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                }, onOpenEditor = { editorOpen = true })
             }
         }
     }
+
 
     private fun decodeSelectedImage(uri: Uri, maxDimension: Int?): Bitmap {
         if (android.os.Build.VERSION.SDK_INT >= 28) {
@@ -148,8 +156,80 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun WmrEditor(
+private fun WmrHome(onChoosePhoto: () -> Unit, onOpenEditor: () -> Unit) {
+    val bg = Color(0xFF050506)
+    val panel = Color(0xFF151518)
+    val red = Color(0xFFFF4655)
+    Surface(modifier = Modifier.fillMaxSize(), color = bg) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(16.dp) ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                Column {
+                    Text("WMR", color = Color.White, style = MaterialTheme.typography.headlineLarge)
+                    Text("MOBILE STUDIO", color = Color(0xFF8D8D96), style = MaterialTheme.typography.labelSmall)
+                }
+                Surface(color = Color(0xFF28221A), shape = RoundedCornerShape(50)) {
+                    Text("♛  PREMIUM", color = Color(0xFFDDBB69), modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp), style = MaterialTheme.typography.labelMedium)
+                }
+            }
+            Surface(color = red, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth().clickable { onChoosePhoto() }) {
+                Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("✦  CREATE", color = Color.White, style = MaterialTheme.typography.labelLarge)
+                    Text("Edit a photo", color = Color.White, style = MaterialTheme.typography.headlineSmall)
+                    Text("Choose an image to start your edit  →", color = Color.White.copy(alpha = 0.85f))
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(color = Color.White, shape = RoundedCornerShape(18.dp), modifier = Modifier.weight(1f).height(100.dp).clickable { onChoosePhoto() }) {
+                    Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.SpaceBetween) {
+                        Text("▣", color = red, style = MaterialTheme.typography.headlineSmall)
+                        Text("PHOTO", color = Color.Black, style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+                Surface(color = panel, shape = RoundedCornerShape(18.dp), modifier = Modifier.weight(1f).height(100.dp).clickable { onOpenEditor() }) {
+                    Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.SpaceBetween) {
+                        Text("◉", color = red, style = MaterialTheme.typography.headlineSmall)
+                        Text("EDITOR", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("TOOLS", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                    Text("CURRENT FEATURES", color = Color(0xFF777780), style = MaterialTheme.typography.labelSmall)
+                }
+                val tools = listOf("Adjust", "Filters", "Natural Smile", "Before / After", "Full-size Export", "Reset")
+                tools.chunked(3).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                        row.forEach { tool ->
+                            Surface(color = panel, shape = RoundedCornerShape(15.dp), modifier = Modifier.weight(1f).height(86.dp).clickable { onOpenEditor() }) {
+                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.SpaceBetween) {
+                                    Text("✦", color = red)
+                                    Text(tool, color = Color.White, style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+                        }
+                        if (row.size < 3) repeat(3-row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
+            Surface(color = panel, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("NATURAL RETOUCH", color = Color(0xFFDDBB69), style = MaterialTheme.typography.labelMedium)
+                    Text("Subtle edits. Your original stays untouched.", color = Color.White)
+                    Text("Preview edits and export a full-resolution copy.", color = Color(0xFF8D8D96), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                Text("HOME     •     PHOTO STUDIO", color = Color(0xFF777780), style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun WmrEditor 
     imageUri: Uri?,
+    onBack: () -> Unit,
     decodeImage: (Uri, Int?) -> Bitmap?,
     onChoosePhoto: () -> Unit,
     onClear: () -> Unit,
@@ -207,7 +287,11 @@ private fun WmrEditor(
             verticalArrangement = Arrangement.spacedBy(14.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("WMR MOBILE", style = MaterialTheme.typography.headlineMedium, color = Color.White)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("‹  BACK", color = Color(0xFFFF4D5A), modifier = Modifier.clickable { onBack() })
+                Text("WMR  /  EDITOR", color = Color(0xFFB8C0D4))
+            }
+            Text("Make it yours.", style = MaterialTheme.typography.headlineMedium, color = Color.White)
             Text("Your photos. Your control.", color = Color(0xFFB8C0D4))
 
             Surface(
