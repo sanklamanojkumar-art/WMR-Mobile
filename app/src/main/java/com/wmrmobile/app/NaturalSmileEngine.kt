@@ -23,7 +23,7 @@ internal object NaturalSmileEngine {
             .setOutputFaceBlendshapes(true)
             .build()
         // MediaPipe requires software ARGB_8888; picker images may be hardware-backed or other configs.
-        val analysisBitmap = if (bitmap.config == Bitmap.Config.ARGB_8888 && !bitmap.isHardware) bitmap else
+        val analysisBitmap = if (bitmap.config == Bitmap.Config.ARGB_8888) bitmap else
             bitmap.copy(Bitmap.Config.ARGB_8888, false) ?: error("Could not convert photo to ARGB_8888 for face analysis.")
         val landmarker = FaceLandmarker.createFromOptions(context, options)
         try {
