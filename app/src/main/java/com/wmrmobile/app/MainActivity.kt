@@ -2,6 +2,8 @@ package com.wmrmobile.app
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import java.io.File
+import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.graphics.Canvas
 import android.graphics.ColorMatrix
@@ -60,6 +62,8 @@ class MainActivity : ComponentActivity() {
     private var selectedImage by mutableStateOf<Uri?>(null)
     private var editorOpen by mutableStateOf(false)
     private var pendingExport: Bitmap? = null
+    private val savedGallery = mutableStateListOf<String>()
+    private var galleryOpen by mutableStateOf(false)
 
     private val imagePicker = registerForActivityResult(
         ActivityResultContracts.PickVisualMedia()
@@ -73,10 +77,12 @@ class MainActivity : ComponentActivity() {
             Thread {
                 val saved = runCatching {
                     contentResolver.openOutputStream(uri)?.use { output ->
-                        check(bitmap.compress(Bitmap.CompressFormat.JPEG, 95, output)) {
-                            "JPEG compression failed"
-                        }
+                        check(bitmap.compress(Bitmap.CompressFormat.JPEG, 95, output)) { "JPEG compression failed" }
                     } ?: error("Unable to open destination")
+                    val galleryDir = File(filesDir, "saved_gallery").apply { mkdirs() }
+                    val galleryFile = File(galleryDir, "WMR-${System.currentTimeMillis()}.jpg")
+                    galleryFile.outputStream().use { internal -> check(bitmap.compress(Bitmap.CompressFormat.JPEG, 95, internal)) }
+                    runOnUiThread { savedGallery.add(0, galleryFile.absolutePath) }
                     true
                 }.getOrDefault(false)
                 bitmap.recycle()
@@ -99,7 +105,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             MaterialTheme {
-                if (editorOpen) WmrEditor(
+                if (galleryOpen) WmrGallery(files = savedGallery.toList(), onBack = { galleryOpen = false }, onDelete = { path -> File(path).delete(); savedGallery.remove(path) })
+                else if (editorOpen) WmrEditor(
                     imageUri = selectedImage,
                     onBack = { editorOpen = false },
                     decodeImage = ::decodeSelectedImage,
@@ -119,7 +126,7 @@ class MainActivity : ComponentActivity() {
                 ) else WmrHome(onChoosePhoto = {
                     editorOpen = true
                     imagePicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                }, onOpenEditor = { editorOpen = true })
+                }, onOpenEditor = { editorOpen = true }, onOpenGallery = { galleryOpen = true })
             }
         }
     }
@@ -159,7 +166,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun WmrHome(onChoosePhoto: () -> Unit, onOpenEditor: () -> Unit) {
+private fun WmrHome(onChoosePhoto: () -> Unit, onOpenEditor: () -> Unit, onOpenGallery: () -> Unit) {
     val bg = Color(0xFF050506)
     val panel = Color(0xFF141416)
     val red = Color(0xFFFF4655)
@@ -239,9 +246,29 @@ private fun WmrHome(onChoosePhoto: () -> Unit, onOpenEditor: () -> Unit) {
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 Text("⌂  HOME", color = Color.White, style = MaterialTheme.typography.labelSmall)
-                Text("▧  PHOTOS", color = Color(0xFF777780), style = MaterialTheme.typography.labelSmall)
+                Text("▧  PHOTOS", color = Color(0xFF777780), style = MaterialTheme.typography.labelSmall, modifier = Modifier.clickable { onOpenGallery() })
                 Text("✦  EDITOR", color = Color(0xFF777780), style = MaterialTheme.typography.labelSmall, modifier = Modifier.clickable { onOpenEditor() })
                 Text("◉  PROFILE", color = Color(0xFF777780), style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun WmrGallery(files: List<String>, onBack: () -> Unit, onDelete: (String) -> Unit) {
+    Surface(Modifier.fillMaxSize(), color = Color(0xFF10131B)) {
+        Column(Modifier.fillMaxSize().padding(18.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("‹ BACK", color = Color.White, modifier = Modifier.clickable { onBack() }); Text("WMR / GALLERY", color = Color.White) }
+            Text("Saved photos", color = Color.White, style = MaterialTheme.typography.headlineMedium)
+            Text("${files.size} saved", color = Color(0xFFB8C0D4))
+            if (files.isEmpty()) Text("Your edited photos will appear here after saving.", color = Color(0xFFB8C0D4)
+            else files.forEach { path ->
+                Surface(color = Color(0xFF1C2230), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(File(path).name, color = Color.White, modifier = Modifier.weight(1f))
+                        OutlinedButton(onClick = { onDelete(path) }) { Text("Delete") }
+                    }
+                }
             }
         }
     }
