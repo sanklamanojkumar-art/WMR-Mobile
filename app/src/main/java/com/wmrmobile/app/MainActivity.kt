@@ -38,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -246,6 +247,8 @@ private fun WmrHome(onChoosePhoto: () -> Unit, onOpenEditor: () -> Unit) {
     }
 }
 
+private data class EditorSnapshot(val rotate: Float, val straighten: Float, val zoom: Float, val brightness: Float, val contrast: Float, val saturation: Float, val filter: String)
+
 @Composable
 private fun WmrEditor(
     imageUri: Uri?,
@@ -272,6 +275,19 @@ private fun WmrEditor(
     var appliedSmileIntensity by remember { mutableStateOf(0f) }
     var exporting by remember { mutableStateOf(false) }
     var exportError by remember { mutableStateOf<String?>(null) }
+    val history = remember { mutableStateListOf<EditorSnapshot>() }
+    var historyIndex by remember { mutableStateOf(-1) }
+    fun currentSnapshot() = EditorSnapshot(rotationDegrees, straightenDegrees, cropZoom, brightness, contrast, saturation, selectedFilter)
+    fun recordHistory() {
+        val item = currentSnapshot()
+        if (historyIndex >= 0 && history.getOrNull(historyIndex) == item) return
+        while (history.size > historyIndex + 1) history.removeAt(history.lastIndex)
+        history.add(item); historyIndex = history.lastIndex
+    }
+    fun restoreSnapshot(item: EditorSnapshot) {
+        rotationDegrees=item.rotate; straightenDegrees=item.straighten; cropZoom=item.zoom
+        brightness=item.brightness; contrast=item.contrast; saturation=item.saturation; selectedFilter=item.filter
+    }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -296,6 +312,8 @@ private fun WmrEditor(
         appliedSmileIntensity = 0f
         smileError = null
         exportError = null
+        history.clear(); historyIndex = -1
+        recordHistory()
     }
 
     // Preview uses a GPU color filter; do not allocate a new full-size Bitmap
@@ -388,11 +406,15 @@ private fun WmrEditor(
                     ) { Text("Reset") }
                 }
 
-                OutlinedButton(onClick = { rotationDegrees = (rotationDegrees + 90f) % 360f }, modifier = Modifier.fillMaxWidth()) { Text("Rotate 90°  •  ${rotationDegrees.toInt()}°") }
+                OutlinedButton(onClick = { rotationDegrees = (rotationDegrees + 90f) % 360f; recordHistory() }, modifier = Modifier.fillMaxWidth()) { Text("Rotate 90°  •  ${rotationDegrees.toInt()}°") }
                 Text("CROP  •  ${(cropZoom * 100).toInt()}%", color = Color.White)
-                Slider(value = cropZoom, onValueChange = { cropZoom = it }, valueRange = 1f..2.5f)
+                Slider(value = cropZoom, onValueChange = { cropZoom = it; recordHistory() }, valueRange = 1f..2.5f)
                 Text("STRAIGHTEN  •  ${straightenDegrees.toInt()}°", color = Color.White)
-                Slider(value = straightenDegrees, onValueChange = { straightenDegrees = it }, valueRange = -15f..15f)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { if (historyIndex > 0) { historyIndex--; restoreSnapshot(history[historyIndex]) } }, enabled = historyIndex > 0, modifier = Modifier.weight(1f)) { Text("Undo") }
+                    OutlinedButton(onClick = { if (historyIndex < history.lastIndex) { historyIndex++; restoreSnapshot(history[historyIndex]) } }, enabled = historyIndex < history.lastIndex, modifier = Modifier.weight(1f)) { Text("Redo") }
+                }
+                Slider(value = straightenDegrees, onValueChange = { straightenDegrees = it; recordHistory() }, valueRange = -15f..15f)
                 Text("NATURAL SMILE", color = Color.White, style = MaterialTheme.typography.titleSmall)
                 Text("On-device face landmarks • localized mouth adjustment", color = Color(0xFFB8C0D4))
                 Text("Smile intensity  ${(smileIntensity * 100).toInt()}%", color = Color.White)
@@ -433,7 +455,7 @@ private fun WmrEditor(
                 ) {
                     listOf("Natural", "Vivid", "Warm", "Cool", "Mono", "Soft").forEach { preset ->
                         if (selectedFilter == preset) {
-                            Button(onClick = { selectedFilter = preset }) { Text(preset) }
+                            Button(onClick = { selectedFilter = preset; recordHistory() }) { Text(preset) }
                         } else {
                             OutlinedButton(onClick = { selectedFilter = preset }) { Text(preset) }
                         }
@@ -441,11 +463,11 @@ private fun WmrEditor(
                 }
 
                 Text("Brightness  ${brightness.toInt()}", color = Color.White)
-                Slider(value = brightness, onValueChange = { brightness = it }, valueRange = -80f..80f)
+                Slider(value = brightness, onValueChange = { brightness = it; recordHistory() }, valueRange = -80f..80f)
                 Text("Contrast  ${(contrast * 100).toInt()}%", color = Color.White)
-                Slider(value = contrast, onValueChange = { contrast = it }, valueRange = 0.5f..1.5f)
+                Slider(value = contrast, onValueChange = { contrast = it; recordHistory() }, valueRange = 0.5f..1.5f)
                 Text("Saturation  ${(saturation * 100).toInt()}%", color = Color.White)
-                Slider(value = saturation, onValueChange = { saturation = it }, valueRange = 0f..2f)
+                Slider(value = saturation, onValueChange = { saturation = it; recordHistory() }, valueRange = 0f..2f)
 
                 Button(
                     onClick = {
