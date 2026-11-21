@@ -68,6 +68,21 @@ class PhotoAdjustmentsTest {
             assertTrue("$preset contains non-finite values", matrix.all { it.isFinite() })
         }
     }
+
+    @Test
+    fun regressionBoundaryAdjustmentsRemainFiniteAcrossEveryPreset() {
+        listOf("Natural", "Vivid", "Warm", "Cool", "Mono", "Soft").forEach { preset ->
+            listOf(-80f, 0f, 80f).forEach { brightness ->
+                listOf(0.5f, 1f, 1.5f).forEach { contrast ->
+                    listOf(0f, 1f, 2f).forEach { saturation ->
+                        val matrix = buildPhotoMatrix(brightness, contrast, saturation, preset)
+                        assertEquals(20, matrix.size)
+                        assertTrue("non-finite matrix: $preset/$brightness/$contrast/$saturation", matrix.all { it.isFinite() })
+                    }
+                }
+            }
+        }
+    }
 }
 
 
