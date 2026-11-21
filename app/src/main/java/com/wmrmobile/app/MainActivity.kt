@@ -103,6 +103,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        File(filesDir, "saved_gallery").listFiles()?.filter { it.isFile && it.extension.equals("jpg", true) }?.sortedByDescending { it.lastModified() }?.forEach { savedGallery.add(it.absolutePath) }
         setContent {
             MaterialTheme {
                 if (galleryOpen) WmrGallery(files = savedGallery.toList(), onBack = { galleryOpen = false }, onDelete = { path -> File(path).delete(); savedGallery.remove(path) })
