@@ -258,6 +258,8 @@ private fun WmrEditor(
     var originalBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var rotationDegrees by remember { mutableStateOf(0f) }
+    var straightenDegrees by remember { mutableStateOf(0f) }
+    var cropZoom by remember { mutableStateOf(1f) }
     var brightness by remember { mutableStateOf(0f) }
     var contrast by remember { mutableStateOf(1f) }
     var saturation by remember { mutableStateOf(1f) }
@@ -282,6 +284,8 @@ private fun WmrEditor(
                 .getOrNull()
         }
         rotationDegrees = 0f
+        straightenDegrees = 0f
+        cropZoom = 1f
         brightness = 0f
         contrast = 1f
         saturation = 1f
@@ -326,8 +330,8 @@ private fun WmrEditor(
                     Image(
                         bitmap = preview.asImageBitmap(),
                         contentDescription = if (showOriginal) "Original photo" else "Edited photo preview",
-                        modifier = Modifier.fillMaxSize().graphicsLayer(rotationZ = rotationDegrees),
-                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize().graphicsLayer(rotationZ = rotationDegrees + straightenDegrees, scaleX = cropZoom, scaleY = cropZoom),
+                        contentScale = if (cropZoom > 1f) ContentScale.Crop else ContentScale.Fit,
                         colorFilter = if (showOriginal) null else ColorFilter.colorMatrix(previewColorMatrix)
                     )
                 } else {
@@ -368,6 +372,8 @@ private fun WmrEditor(
                     OutlinedButton(
                         onClick = {
                             rotationDegrees = 0f
+                            straightenDegrees = 0f
+                            cropZoom = 1f
                             brightness = 0f
                             contrast = 1f
                             saturation = 1f
@@ -383,6 +389,10 @@ private fun WmrEditor(
                 }
 
                 OutlinedButton(onClick = { rotationDegrees = (rotationDegrees + 90f) % 360f }, modifier = Modifier.fillMaxWidth()) { Text("Rotate 90°  •  ${rotationDegrees.toInt()}°") }
+                Text("CROP  •  ${(cropZoom * 100).toInt()}%", color = Color.White)
+                Slider(value = cropZoom, onValueChange = { cropZoom = it }, valueRange = 1f..2.5f)
+                Text("STRAIGHTEN  •  ${straightenDegrees.toInt()}°", color = Color.White)
+                Slider(value = straightenDegrees, onValueChange = { straightenDegrees = it }, valueRange = -15f..15f)
                 Text("NATURAL SMILE", color = Color.White, style = MaterialTheme.typography.titleSmall)
                 Text("On-device face landmarks • localized mouth adjustment", color = Color(0xFFB8C0D4))
                 Text("Smile intensity  ${(smileIntensity * 100).toInt()}%", color = Color.White)
@@ -447,7 +457,8 @@ private fun WmrEditor(
                         val exportSaturation = saturation
                         val exportFilter = selectedFilter
                         val exportSmile = appliedSmileIntensity
-                        val exportRotation = rotationDegrees
+                        val exportRotation = rotationDegrees + straightenDegrees
+                        val exportCropZoom = cropZoom
                         scope.launch {
                             val result = runCatching {
                                 withContext(Dispatchers.IO) {
@@ -460,7 +471,7 @@ private fun WmrEditor(
                                             exportBrightness, exportContrast,
                                             exportSaturation, exportFilter
                                         )
-                                        if (exportSmile > 0f) {
+                                        val adjusted = if (exportSmile > 0f) {
                                             val geometry = NaturalSmileEngine.detect(context, fullResolution)
                                             // Warp and colour adjustments render in one pass.
                                             NaturalSmileEngine.apply(
@@ -472,6 +483,7 @@ private fun WmrEditor(
                                                 exportSaturation, exportFilter, exportColorFilter
                                             )
                                         }
+                                        if (exportCropZoom > 1f) centerCropBitmap(adjusted, exportCropZoom) else adjusted
                                     } finally {
                                         if (fullResolution !== decodedOriginal && !fullResolution.isRecycled) fullResolution.recycle()
                                         if (!decodedOriginal.isRecycled) decodedOriginal.recycle()
@@ -500,6 +512,16 @@ private fun WmrEditor(
             }
         }
     }
+}
+
+private fun centerCropBitmap(source: Bitmap, zoom: Float): Bitmap {
+    val cropWidth = (source.width / zoom).toInt().coerceAtLeast(1)
+    val cropHeight = (source.height / zoom).toInt().coerceAtLeast(1)
+    val left = (source.width - cropWidth) / 2
+    val top = (source.height - cropHeight) / 2
+    val cropped = Bitmap.createBitmap(source, left, top, cropWidth, cropHeight)
+    if (cropped !== source && !source.isRecycled) source.recycle()
+    return cropped
 }
 
 private fun rotateBitmap(source: Bitmap, degrees: Float): Bitmap {
