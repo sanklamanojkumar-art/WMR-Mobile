@@ -7,6 +7,7 @@ import android.graphics.Canvas
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
+import android.graphics.Matrix
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
@@ -46,6 +47,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix as ComposeColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
@@ -255,6 +257,7 @@ private fun WmrEditor(
 ) {
     var originalBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var loadError by remember { mutableStateOf<String?>(null) }
+    var rotationDegrees by remember { mutableStateOf(0f) }
     var brightness by remember { mutableStateOf(0f) }
     var contrast by remember { mutableStateOf(1f) }
     var saturation by remember { mutableStateOf(1f) }
@@ -278,6 +281,7 @@ private fun WmrEditor(
             }.onFailure { loadError = it.localizedMessage ?: "Unable to read this image" }
                 .getOrNull()
         }
+        rotationDegrees = 0f
         brightness = 0f
         contrast = 1f
         saturation = 1f
@@ -322,7 +326,7 @@ private fun WmrEditor(
                     Image(
                         bitmap = preview.asImageBitmap(),
                         contentDescription = if (showOriginal) "Original photo" else "Edited photo preview",
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().graphicsLayer(rotationZ = rotationDegrees),
                         contentScale = ContentScale.Fit,
                         colorFilter = if (showOriginal) null else ColorFilter.colorMatrix(previewColorMatrix)
                     )
@@ -363,6 +367,7 @@ private fun WmrEditor(
                     ) { Text(if (showOriginal) "Show edited" else "Before / After") }
                     OutlinedButton(
                         onClick = {
+                            rotationDegrees = 0f
                             brightness = 0f
                             contrast = 1f
                             saturation = 1f
@@ -377,6 +382,7 @@ private fun WmrEditor(
                     ) { Text("Reset") }
                 }
 
+                OutlinedButton(onClick = { rotationDegrees = (rotationDegrees + 90f) % 360f }, modifier = Modifier.fillMaxWidth()) { Text("Rotate 90°  •  ${rotationDegrees.toInt()}°") }
                 Text("NATURAL SMILE", color = Color.White, style = MaterialTheme.typography.titleSmall)
                 Text("On-device face landmarks • localized mouth adjustment", color = Color(0xFFB8C0D4))
                 Text("Smile intensity  ${(smileIntensity * 100).toInt()}%", color = Color.White)
@@ -441,12 +447,14 @@ private fun WmrEditor(
                         val exportSaturation = saturation
                         val exportFilter = selectedFilter
                         val exportSmile = appliedSmileIntensity
+                        val exportRotation = rotationDegrees
                         scope.launch {
                             val result = runCatching {
                                 withContext(Dispatchers.IO) {
                                     // The 1600px bitmap is preview-only; export re-reads the original.
-                                    val fullResolution = decodeImage(uri, null)
+                                    val decodedOriginal = decodeImage(uri, null)
                                         ?: error("Could not decode the original-resolution photo")
+                                    val fullResolution = rotateBitmap(decodedOriginal, exportRotation)
                                     try {
                                         val exportColorFilter = buildAndroidColorFilter(
                                             exportBrightness, exportContrast,
@@ -465,7 +473,8 @@ private fun WmrEditor(
                                             )
                                         }
                                     } finally {
-                                        if (!fullResolution.isRecycled) fullResolution.recycle()
+                                        if (fullResolution !== decodedOriginal && !fullResolution.isRecycled) fullResolution.recycle()
+                                        if (!decodedOriginal.isRecycled) decodedOriginal.recycle()
                                     }
                                 }
                             }
@@ -491,6 +500,12 @@ private fun WmrEditor(
             }
         }
     }
+}
+
+private fun rotateBitmap(source: Bitmap, degrees: Float): Bitmap {
+    if (degrees % 360f == 0f) return source
+    val matrix = Matrix().apply { postRotate(degrees) }
+    return Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
 }
 
 private fun buildPreviewColorMatrix(
