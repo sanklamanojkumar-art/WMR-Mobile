@@ -262,7 +262,7 @@ private fun WmrGallery(files: List<String>, onBack: () -> Unit, onDelete: (Strin
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("‹ BACK", color = Color.White, modifier = Modifier.clickable { onBack() }); Text("WMR / GALLERY", color = Color.White) }
             Text("Saved photos", color = Color.White, style = MaterialTheme.typography.headlineMedium)
             Text("${files.size} saved", color = Color(0xFFB8C0D4))
-            if (files.isEmpty()) Text("Your edited photos will appear here after saving.", color = Color(0xFFB8C0D4)
+            if (files.isEmpty()) Text("Your edited photos will appear here after saving.", color = Color(0xFFB8C0D4))
             else files.forEach { path ->
                 Surface(color = Color(0xFF1C2230), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
